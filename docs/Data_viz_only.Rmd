@@ -274,7 +274,11 @@ numdat_nest %>%
 ```
 
 
-### Heatmap
+### Heatmap {.tabset}
+
+#### Pearson heatmap
+
+Simple note: Pearson correlation measures the strength of the linear relationship. 
 
 ```{r,fig.height=10,fig.align='center'}
 numdat %>% 
@@ -286,7 +290,25 @@ numdat %>%
   geom_tile() +
   geom_text(aes(label = round(correlation, 2)), color = "black", size = 3) +  # Add text on each tile
   scale_fill_gradientn(colors = c("blue", "white", "red")) + 
-  labs(title = "Heatmap of numerical values", x = "Column", y = "Row", fill = "correlation") +
+  labs(title = "Heatmap of numerical values pearson correlation", x = "Column", y = "Row", fill = "correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+#### Spearman heatmap
+
+Simple note: Spearman correlation measures the monoteny of between variables
+```{r,fig.height=10,fig.align='center'}
+numdat %>% 
+  cor(method = "spearman") %>% 
+  as.tibble() %>% 
+  mutate(names = numerical_features) %>% 
+  pivot_longer(cols=-names,names_to = "variables",values_to = "correlation") %>% 
+  ggplot(aes(x = names, y = variables, fill = correlation)) +
+  geom_tile() +
+  geom_text(aes(label = round(correlation, 2)), color = "black", size = 3) +  # Add text on each tile
+  scale_fill_gradientn(colors = c("blue", "white", "red")) + 
+  labs(title = "Heatmap of numerical values spearman correlation", x = "Column", y = "Row", fill = "correlation") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
@@ -426,6 +448,8 @@ data_for_2d %>%
 
 ### PCA
 
+--------- NOTE ALL NA-VALUES ARE OMITTED ------ 
+
 ```{r,fig.show='hold',out.width="50%"}
 for(i in 1:length(numerical_features)){
 pca_plot <- numdat %>% 
@@ -439,6 +463,11 @@ pca_plot <- numdat %>%
 print(pca_plot)
 }
 ```
+
+### T-sne
+
+A non linear approach to dimensional reduction. 
+
 
 
 ## Analysis of Catagorical variables {.tabset}
@@ -579,6 +608,16 @@ datapiv <-  Data %>%
 
 ## Make sure feauture is the chosen categorical value
 
+datapiv
+
+datapiv %>% 
+  filter(feature=="species") %>% 
+  ggplot(aes(bill_depth_mm,flipper_length_mm,color=value)) +
+  geom_point()
+
+catnum_combs
+
+
 ```
 
 ### Distribution/Histograms by category 
@@ -605,6 +644,34 @@ catnum_combs %>%
         ggtitle(paste("Histogram of",numerical_features,"faceted by",categorical_features))
     ))
   ) %>% pull(hist_plots)
+```
+
+### Scatterplots colored by category
+
+This should essentially have every combination of every combination of the numerical features with the categorical. 
+```{r,fig.show='hold',out.width="50%",results='hide',warning=FALSE,message=FALSE}
+catnumnum_combs <- expand_grid(categorical_features,numerical_features,numerical_features)
+catnumnum_combs <- catnumnum_combs %>% 
+  rename("numerical_features_1" = numerical_features...2,
+         "numerical_features_2" = numerical_features...3) %>% 
+  filter(numerical_features_1!=numerical_features_2)
+
+catnumnum_combs %>% 
+  mutate(get_data = 
+           pmap(list(categorical_features,numerical_features_1,numerical_features_2),
+                ~(
+                  datapiv %>% 
+                    filter(feature==..1) %>% 
+                    select(..2,..3,value) %>% 
+                    rename(all_of(c(col1 = ..2))) %>%
+                    rename(all_of(c(col2 = ..3))) %>% 
+                    ggplot(aes(col1,col2,color=value)) +
+                    geom_point() +
+                    xlab(..2) +
+                    ylab(..3) + 
+                    ggtitle(paste("Scatterplot of",..2,"and",..3,"coloured by",..1,sep = " "))
+                ))) %>% 
+  pull(get_data)
 ```
 
 ### Ridgeplots  
@@ -653,6 +720,33 @@ catnum_combs %>%
         ggtitle(paste("Boxplot of numerical features, faceted by",categorical_features))
     ))
   ) %>% pull(boxplots)
+```
+
+### Violin plots by category
+
+```{r,fig.show='hold',out.width="50%",results='hide',warning=FALSE}
+catnum_combs %>% 
+  mutate(get_data = map2(categorical_features,numerical_features,~(
+    datapiv %>% 
+      filter(feature==.x) %>% 
+      select(feature,.y,value) %>% 
+      rename(all_of(c(col1 = .y)))
+  ))) %>% 
+  unnest() %>% 
+  group_by(categorical_features) %>% 
+  nest() %>% 
+  mutate(
+    boxplots = map(data,~(
+      .x %>% 
+        ggplot(aes(value,col1)) +
+        geom_violin() +
+        geom_boxplot(width=0.1) +
+        facet_wrap(~numerical_features,scales = "free") +
+        ggtitle(paste("Violin plot of numerical features, faceted by",categorical_features))
+    ))
+  ) %>% pull(boxplots)
+
+
 ```
 
 
@@ -714,4 +808,31 @@ datapiv %>%
 
 ```
 
+### Bar plot of mean with standard deviations 
+
+```{r}
+catnum_combs %>% 
+  mutate(
+    get_data = map2(
+      categorical_features,numerical_features,~(
+        datapiv %>% 
+          filter(feature==.x) %>% 
+          select(value,.y) %>% 
+          rename(all_of(c(col1 = .y))) %>%  
+          group_by(value) %>% 
+          summarise(
+            avg = mean(col1,na.rm = T),
+            std = sd(col1,na.rm = T)
+          )))) %>% 
+  mutate(
+    plots = pmap(list(categorical_features,get_data,numerical_features),~(
+      ..2 %>% 
+        ggplot(aes(value,avg,fill=value)) +
+        geom_bar(stat="identity") +
+        geom_errorbar(aes(ymin = avg-std,ymax = avg+std),width = 0.25) +
+        labs(x="",y=paste("mean of",..3,sep=" "))+
+        ggtitle(paste("Mean bar chart of",..3,"by",..1,sep = " "))
+    ))) %>% pull(plots)
+       
+```
 
