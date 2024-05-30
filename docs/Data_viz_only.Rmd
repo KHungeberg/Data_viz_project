@@ -609,15 +609,6 @@ datapiv <-  Data %>%
 
 ## Make sure feauture is the chosen categorical value
 
-datapiv
-
-datapiv %>% 
-  filter(feature=="species") %>% 
-  ggplot(aes(bill_depth_mm,flipper_length_mm,color=value)) +
-  geom_point()
-
-catnum_combs
-
 
 ```
 
@@ -811,7 +802,7 @@ datapiv %>%
 
 ### Bar plot of mean with standard deviations 
 
-```{r}
+```{r,fig.show='hold',out.width="50%",results='hide',warning=FALSE,message=FALSE}
 catnum_combs %>% 
   mutate(
     get_data = map2(
