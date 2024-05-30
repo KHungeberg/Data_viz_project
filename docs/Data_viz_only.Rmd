@@ -462,6 +462,7 @@ pca_plot <- numdat %>%
   geom_point() 
 print(pca_plot)
 }
+
 ```
 
 ### T-sne
